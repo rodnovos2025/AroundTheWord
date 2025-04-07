@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Word Cloud</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background-color: #1a1a1a;
+        color: white;
+        overflow-x: hidden;
+      }
+      #menu {
+        position: fixed;
+        top: 50%;
+        right: 0;
+        width: 200px;
+        height: 60%;
+        padding-top: 60px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: right 0.3s ease;
+        z-index: 200;
+        transform: translateY(-50%);
+      }
+      .menu-item {
+        padding: 12px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        text-align: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #b30000, #4d0000);
+        border: 1px solid #444;
+        transition: background 0.3s, transform 0.3s;
+      }
+      .menu-item:hover {
+        background: linear-gradient(135deg, #7a0000, #2c0000);
+        transform: scale(1.05);
+      }
+      #header {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 15px;
+      }
+      #wordInput {
+        padding: 12px;
+        font-size: 20px;
+        color: white;
+        background-color: #2b2b2b;
+        border: none;
+        border-radius: 10px;
+        width: 90%;
+        outline: none;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 255, 255, 0.05) inset;
+        position: relative;
+      }
+      #menu-toggle {
+        font-size: 26px;
+        background-color: transparent;
+        border: none;
+        color: white;
+        cursor: pointer;
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      #synonym-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        padding: 20px;
+      }
+      .synonym-tag {
+        padding: 6px 12px;
+        color: white;
+        border-radius: 5px;
+        font-size: 14px;
+        cursor: pointer;
+        opacity: 0;
+        animation: appear 0.5s forwards, floaty 3s infinite ease-in-out alternate;
+        transition: transform 0.2s;
+      }
+      .synonym-tag:hover {
+        background-color: #45a049;
+        transform: scale(1.1);
+      }
+      #definition-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #333;
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        display: none;
+        z-index: 300;
+        width: 80%;
+        max-width: 600px;
+      }
+      #modal-close {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        font-size: 20px;
+        cursor: pointer;
+      }
+      #sound-button {
+        margin-top: 15px;
+        padding: 10px;
+        background-color: #ff0000;
+        border: none;
+        color: white;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      @keyframes appear {
+        0% {
+          opacity: 0;
+          transform: scale(0.5);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes floaty {
+        0% {
+          transform: translate(0, 0);
+        }
+        50% {
+          transform: translate(1px, -1px);
+        }
+        100% {
+          transform: translate(0, 0);
+        }
+      }
+    </style>
+    <script src="https://code.responsivevoice.org/responsivevoice.js"></script>
+  </head>
+  <body>
+    <div id="menu">
+      <div class="menu-item" data-type="rel_trg">triggers</div>
+      <div class="menu-item" data-type="rel_syn">synonyms</div>
+      <div class="menu-item" data-type="rel_ant">antonyms</div>
+      <div class="menu-item" data-type="rel_spc">specifics</div>
+      <div class="menu-item" data-type="rel_gen">generals</div>
+      <div class="menu-item" data-type="rel_com">compounds</div>
+      <div class="menu-item" data-type="rel_rhy">rhymes</div>
+    </div>
+    <div id="header">
+      <div style="position: relative; width: 90%;">
+        <input
+          type="text"
+          id="wordInput"
+          placeholder="Enter a word"
+          oninput="fetchSynonyms()"
+        />
+        <button id="menu-toggle">&#9776;</button>
+      </div>
+    </div>
+    <div id="synonym-cloud"></div>
+    <div id="definition-modal">
+      <span id="modal-close">&#10006;</span>
+      <h2>Definition</h2>
+      <p id="definition-text">Here will be the definition...</p>
+    </div>
+    <script>
+      let currentType = "rel_trg";
+      const menu = document.getElementById("menu");
+      const toggleBtn = document.getElementById("menu-toggle");
+      const menuItems = document.querySelectorAll(".menu-item");
+      const modal = document.getElementById("definition-modal");
+      const closeModal = document.getElementById("modal-close");
+      const definitionText = document.getElementById("definition-text");
+      let menuOpen = false;
+
+      toggleBtn.onclick = () => {
+        menuOpen = !menuOpen;
+        menu.style.right = menuOpen ? "0" : "-200px";
+      };
+
+      closeModal.onclick = () => {
+        modal.style.display = "none";
+      };
+
+      menuItems.forEach((item) => {
+        item.addEventListener("click", () => {
+          currentType = item.getAttribute("data-type");
+          fetchSynonyms();
+        });
+      });
+
+      function fetchSynonyms() {
+        fetchData(currentType);
+      }
+
+      function fetchData(type) {
+        const word = document.getElementById("wordInput").value.trim();
+        const cloudContainer = document.getElementById("synonym-cloud");
+
+        cloudContainer.innerHTML = "";
+
+        const url = `https://api.datamuse.com/words?${type}=${word}`;
+
+        fetch(url)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.length === 0) {
+              return;
+            }
+
+            cloudContainer.innerHTML = "";
+            const maxScore = Math.max(...data.map((e) => e.score || 1));
+
+            data.forEach((item, index) => {
+              const tag = document.createElement("div");
+              tag.classList.add("synonym-tag");
+              tag.innerHTML = item.word;
+
+              const opacityValue = (item.score || 1) / maxScore;
+              tag.style.background = `linear-gradient(90deg, rgba(255, 0, 0, ${opacityValue}) 0%, rgba(0, 255, 255, ${opacityValue}) 100%)`;
+              tag.style.animationDelay = `${index * 0.05}s`;
+
+              tag.onclick = () => {
+                responsiveVoice.speak(item.word, "UK English Male"); // For English words
+                showDefinition(item.word);
+              };
+
+              cloudContainer.appendChild(tag);
+            });
+          })
+          .catch((error) => {
+            console.error(error);
+          });
+      }
+
+      function showDefinition(word) {
+        const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${word}`;
+
+        fetch(url)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.title && data.title === "No Definitions Found") {
+              definitionText.textContent = "No definition found.";
+            } else {
+              const definition = data[0].meanings[0].definitions[0].definition;
+              definitionText.textContent = definition;
+            }
+
+            modal.style.display = "block";
+          })
+          .catch((error) => {
+            definitionText.textContent = "Error loading definition.";
+            console.error(error);
+          });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        fetchSynonyms(); // Load synonyms by default for empty input
+      });
+    </script>
+  </body>
+</html>
